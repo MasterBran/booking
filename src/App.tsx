@@ -15,10 +15,13 @@ import {
   AppBar,
   Toolbar,
   Alert,
-  Paper
+  Paper,
+  Link
 } from '@mui/material'
+import { BrowserRouter, Routes, Route, Link as RouterLink } from 'react-router-dom'
 import { BookingStore } from './stores/BookingStore'
 import { TimeSlotGrid } from './components/TimeSlotGrid'
+import { ConcurrencyDemo } from './demo/ConcurrencyDemo'
 import { MockBookingAPI } from './services/BookingAPI'
 import { WebSocketService } from './services/WebSocketService'
 
@@ -129,81 +132,107 @@ function App() {
   }
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AppBar position="sticky">
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flex: 1 }}>
-            高并发实时预定系统
-          </Typography>
-          <Button color="inherit" onClick={handleRefresh}>
-            刷新
-          </Button>
-        </Toolbar>
-      </AppBar>
+    <BrowserRouter>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AppBar position="sticky">
+          <Toolbar>
+            <Typography variant="h6" component="div" sx={{ flex: 1 }}>
+              高并发实时预定系统
+            </Typography>
+            <Button color="inherit" component={RouterLink} to="/">
+              主页
+            </Button>
+            <Button color="inherit" component={RouterLink} to="/demo">
+              测试演示
+            </Button>
+            <Button color="inherit" onClick={handleRefresh}>
+              刷新
+            </Button>
+          </Toolbar>
+        </AppBar>
 
-      <Container maxWidth="lg" sx={{ py: 4 }}>
-        {/* 系统特性说明 */}
-        <Paper sx={{ p: 3, mb: 4, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-          <Typography variant="h5" gutterBottom>
-            🚀 高并发实时预定系统
-          </Typography>
-          <Typography variant="body2" sx={{ opacity: 0.9 }}>
-            支持并发冲突处理 · 乐观更新 · 实时状态同步 · 优雅回滚
-          </Typography>
-          <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
-              <Typography variant="caption">✓ 防止并发冲突</Typography>
-            </Paper>
-            <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
-              <Typography variant="caption">✓ 实时状态同步</Typography>
-            </Paper>
-            <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
-              <Typography variant="caption">✓ 乐观UI更新</Typography>
-            </Paper>
-            <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
-              <Typography variant="caption">✓ 智能回滚机制</Typography>
-            </Paper>
-          </Box>
-        </Paper>
+        <Routes>
+          <Route path="/" element={
+            <Container maxWidth="lg" sx={{ py: 4 }}>
+              {/* 系统特性说明 */}
+              <Paper sx={{ p: 3, mb: 4, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                <Typography variant="h5" gutterBottom>
+                  🚀 高并发实时预定系统
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  支持并发冲突处理 · 乐观更新 · 实时状态同步 · 优雅回滚
+                </Typography>
+                <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
+                    <Typography variant="caption">✓ 防止并发冲突</Typography>
+                  </Paper>
+                  <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
+                    <Typography variant="caption">✓ 实时状态同步</Typography>
+                  </Paper>
+                  <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
+                    <Typography variant="caption">✓ 乐观UI更新</Typography>
+                  </Paper>
+                  <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
+                    <Typography variant="caption">✓ 智能回滚机制</Typography>
+                  </Paper>
+                  <Paper sx={{ px: 2, py: 0.5, background: 'rgba(255,255,255,0.2)' }}>
+                    <Typography variant="caption">✓ 跨页签同步</Typography>
+                  </Paper>
+                </Box>
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    component={RouterLink}
+                    to="/demo"
+                  >
+                    进入测试演示 →
+                  </Button>
+                </Box>
+              </Paper>
 
-        {/* 主要内容 */}
-        <TimeSlotGrid bookingStore={bookingStore} />
-      </Container>
+              {/* 主要内容 */}
+              <TimeSlotGrid bookingStore={bookingStore} />
+            </Container>
+          } />
+          <Route path="/demo" element={<ConcurrencyDemo />} />
+        </Routes>
 
-      {/* 用户设置对话框 */}
-      <Dialog open={userDialogOpen} onClose={() => {}} disableEscapeKeyDown>
-        <DialogTitle>欢迎使用预定系统</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="用户名"
-            fullWidth
-            variant="outlined"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            sx={{ mt: 2 }}
-          />
-          <TextField
-            margin="dense"
-            label="用户ID（可选，留空自动生成）"
-            fullWidth
-            variant="outlined"
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-          />
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-            输入用户名后点击确认开始预定
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleSetUser} variant="contained" fullWidth>
-            开始预定
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </ThemeProvider>
+        {/* 用户设置对话框 */}
+        <Dialog open={userDialogOpen} onClose={() => {}} disableEscapeKeyDown>
+          <DialogTitle>欢迎使用预定系统</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="用户名"
+              fullWidth
+              variant="outlined"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              sx={{ mt: 2 }}
+            />
+            <TextField
+              margin="dense"
+              label="用户ID（可选，留空自动生成）"
+              fullWidth
+              variant="outlined"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+              输入用户名后点击确认开始预定
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleSetUser} variant="contained" fullWidth>
+              开始预定
+            </Button>
+          </DialogActions>
+        </Dialog>
+      </ThemeProvider>
+    </BrowserRouter>
   )
 }
 
