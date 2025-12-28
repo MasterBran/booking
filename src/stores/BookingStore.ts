@@ -1,17 +1,16 @@
 import { makeAutoObservable, runInAction } from 'mobx'
 import { v4 as uuidv4 } from 'uuid'
+import { BookingAPI } from '../services/BookingAPI'
+import { GlobalEventBus } from '../services/GlobalEventBus'
 import {
-  TimeSlot,
-  SlotStatus,
+  ApiErrorCode,
   BookingRequest,
   BookingResponse,
-  ApiErrorCode,
   ClientBookingState,
-  ConcurrencyConfig
+  ConcurrencyConfig,
+  SlotStatus,
+  TimeSlot
 } from '../types'
-import { BookingAPI } from '../services/BookingAPI'
-import { WebSocketService } from '../services/WebSocketService'
-import { GlobalEventBus } from '../services/GlobalEventBus'
 
 /**
  * 预定系统核心状态管理
@@ -36,13 +35,11 @@ export class BookingStore {
 
   // 依赖服务
   private api: BookingAPI
-  private wsService: WebSocketService
   private globalEventBus: GlobalEventBus
 
-  constructor(api: BookingAPI, wsService: WebSocketService) {
+  constructor(api: BookingAPI) {
     makeAutoObservable(this)
     this.api = api
-    this.wsService = wsService
     this.globalEventBus = GlobalEventBus.getInstance()
 
     // 初始化客户端状态
@@ -52,10 +49,6 @@ export class BookingStore {
       pendingBookings: new Map(),
       optimisticUpdates: new Map()
     }
-
-    // 设置WebSocket事件监听
-    this.setupWebSocketListeners()
-
     // 设置全局事件监听（用于跨页签同步）
     this.setupGlobalEventListeners()
   }
@@ -270,38 +263,6 @@ export class BookingStore {
   private clearOptimisticUpdate(slotId: string) {
     this.clientState.optimisticUpdates.delete(slotId)
     this.clientState.pendingBookings.delete(slotId)
-  }
-
-  /**
-   * 设置WebSocket监听器
-   */
-  private setupWebSocketListeners() {
-    this.wsService.onSlotUpdate((updatedSlot: TimeSlot) => {
-      runInAction(() => {
-        // 如果是当前用户的预定被确认
-        if (updatedSlot.status === SlotStatus.BOOKED &&
-            updatedSlot.bookedBy === this.currentUser?.id) {
-          this.clearOptimisticUpdate(updatedSlot.id)
-        }
-
-        // 如果是其他用户预定成功，更新状态
-        if (updatedSlot.status === SlotStatus.BOOKED &&
-            updatedSlot.bookedBy !== this.currentUser?.id) {
-          // 清除可能存在的乐观更新
-          this.clientState.optimisticUpdates.delete(updatedSlot.id)
-        }
-
-        this.slots.set(updatedSlot.id, updatedSlot)
-      })
-    })
-
-    this.wsService.onConnectionChange((connected: boolean) => {
-      if (!connected) {
-        this.error = '实时连接已断开'
-      } else {
-        this.error = null
-      }
-    })
   }
 
   /**

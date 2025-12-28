@@ -74,62 +74,6 @@ export enum ApiErrorCode {
   RATE_LIMITED = 'RATE_LIMITED'
 }
 
-// WebSocket消息类型
-export enum WebSocketMessageType {
-  SLOT_UPDATE = 'slot_update',           // 单个时间段更新
-  BULK_SLOT_UPDATE = 'bulk_slot_update', // 批量时间段更新
-  BOOKING_CONFIRMED = 'booking_confirmed', // 预定确认
-  BOOKING_FAILED = 'booking_failed',     // 预定失败
-  HEARTBEAT = 'heartbeat',               // 心跳
-  ERROR = 'error'                        // 错误
-}
-
-// WebSocket消息基接口
-export interface WebSocketMessage {
-  type: WebSocketMessageType
-  timestamp: string
-  data: any
-}
-
-// 单个时间段更新
-export interface SlotUpdateMessage extends WebSocketMessage {
-  type: WebSocketMessageType.SLOT_UPDATE
-  data: {
-    slot: TimeSlot
-  }
-}
-
-// 批量时间段更新
-export interface BulkSlotUpdateMessage extends WebSocketMessage {
-  type: WebSocketMessageType.BULK_SLOT_UPDATE
-  data: {
-    slots: TimeSlot[]
-  }
-}
-
-// 预定确认消息
-export interface BookingConfirmedMessage extends WebSocketMessage {
-  type: WebSocketMessageType.BOOKING_CONFIRMED
-  data: {
-    slotId: string
-    userId: string
-    bookingId: string
-  }
-}
-
-// 预定失败消息
-export interface BookingFailedMessage extends WebSocketMessage {
-  type: WebSocketMessageType.BOOKING_FAILED
-  data: {
-    slotId: string
-    userId: string
-    error: {
-      code: ApiErrorCode
-      message: string
-    }
-  }
-}
-
 // HTTP API 接口定义
 export interface BookingAPI {
   // 获取可用时间段列表
