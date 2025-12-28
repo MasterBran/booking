@@ -7,6 +7,7 @@ import {
   SlotStatus,
   LockReason
 } from '../types'
+import { GlobalEventBus } from './GlobalEventBus'
 
 export interface BookingAPI {
   getAvailableSlots(resourceId?: string): Promise<TimeSlot[]>
@@ -20,8 +21,10 @@ export class MockBookingAPI implements BookingAPI {
   private slots: Map<string, TimeSlot> = new Map()
   private bookingLocks: Map<string, { userId: string; lockedAt: string }> = new Map()
   private bookingConfirmations: Map<string, { userId: string; confirmedAt: string }> = new Map()
+  private globalEventBus: GlobalEventBus
 
   constructor() {
+    this.globalEventBus = GlobalEventBus.getInstance()
     this.initializeMockData()
   }
 
@@ -84,6 +87,23 @@ export class MockBookingAPI implements BookingAPI {
           slotId: slot.id,
           bookedBy: slot.bookedBy!,
           bookedAt: slot.bookedAt!
+        }
+      }
+    }
+
+    // 【新增】检查全局锁（跨页签并发检测）
+    const globalLock = this.globalEventBus.getLock(request.slotId)
+    if (globalLock && globalLock.userId !== request.userId) {
+      return {
+        success: false,
+        error: {
+          code: ApiErrorCode.SLOT_LOCKED_BY_OTHER,
+          message: `该时间段正在被其他用户（${globalLock.userId}）预定`
+        },
+        conflict: {
+          slotId: slot.id,
+          bookedBy: globalLock.userId,
+          bookedAt: globalLock.lockedAt
         }
       }
     }

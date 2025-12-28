@@ -11,6 +11,7 @@ import {
 } from '../types'
 import { BookingAPI } from '../services/BookingAPI'
 import { WebSocketService } from '../services/WebSocketService'
+import { GlobalEventBus } from '../services/GlobalEventBus'
 
 /**
  * 预定系统核心状态管理
@@ -36,11 +37,13 @@ export class BookingStore {
   // 依赖服务
   private api: BookingAPI
   private wsService: WebSocketService
+  private globalEventBus: GlobalEventBus
 
   constructor(api: BookingAPI, wsService: WebSocketService) {
     makeAutoObservable(this)
     this.api = api
     this.wsService = wsService
+    this.globalEventBus = GlobalEventBus.getInstance()
 
     // 初始化客户端状态
     this.clientState = {
@@ -52,6 +55,9 @@ export class BookingStore {
 
     // 设置WebSocket事件监听
     this.setupWebSocketListeners()
+
+    // 设置全局事件监听（用于跨页签同步）
+    this.setupGlobalEventListeners()
   }
 
   /**
@@ -87,44 +93,65 @@ export class BookingStore {
   }
 
   /**
-   * 预定时间段 - 核心并发处理逻辑
+   * 预定时间段 - 核心并发处理逻辑（支持跨页签）
    */
   async bookSlot(slotId: string): Promise<{ success: boolean; error?: string }> {
+    console.log(`[BookingStore] 开始预定: ${slotId} by ${this.currentUser?.id}`)
+
     if (!this.currentUser) {
+      console.log(`[BookingStore] 用户未登录`)
       return { success: false, error: '用户未登录' }
     }
 
     const slot = this.slots.get(slotId)
     if (!slot) {
+      console.log(`[BookingStore] 时间段不存在: ${slotId}`)
       return { success: false, error: '时间段不存在' }
     }
 
     if (slot.status !== SlotStatus.AVAILABLE) {
+      console.log(`[BookingStore] 时间段不可预定: ${slotId} 状态=${slot.status}`)
       return { success: false, error: `时间段不可预定（状态：${slot.status}）` }
     }
 
-    // 1. 乐观更新UI
-    const optimisticSlot: TimeSlot = {
-      ...slot,
-      status: SlotStatus.LOCKED,
-      lockedBy: this.currentUser.id,
-      lockedAt: new Date().toISOString()
+    // 【重要】获取全局锁 - 这是防止跨页签并发的关键
+    console.log(`[BookingStore] 尝试获取全局锁: ${slotId}`)
+    const acquiredLock = this.globalEventBus.acquireLock(slotId, this.currentUser.id)
+    if (!acquiredLock) {
+      console.log(`[BookingStore] 获取全局锁失败: ${slotId}`)
+      return {
+        success: false,
+        error: '该时间段正在被其他用户预定，请稍后重试'
+      }
     }
 
-    this.applyOptimisticUpdate(slotId, optimisticSlot)
-
-    // 2. 发送预定请求
-    const request: BookingRequest = {
-      slotId,
-      userId: this.currentUser.id,
-      timestamp: new Date().toISOString(),
-      clientId: this.clientState.clientId
-    }
+    console.log(`[BookingStore] 获取全局锁成功: ${slotId}`)
 
     try {
+      // 1. 乐观更新UI
+      const optimisticSlot: TimeSlot = {
+        ...slot,
+        status: SlotStatus.LOCKED,
+        lockedBy: this.currentUser.id,
+        lockedAt: new Date().toISOString()
+      }
+
+      this.applyOptimisticUpdate(slotId, optimisticSlot)
+
+      // 2. 发送预定请求
+      const request: BookingRequest = {
+        slotId,
+        userId: this.currentUser.id,
+        timestamp: new Date().toISOString(),
+        clientId: this.clientState.clientId
+      }
+
+      console.log(`[BookingStore] 发送预定请求: ${slotId}`)
       const response = await this.api.bookSlot(request)
+      console.log(`[BookingStore] 收到API响应: ${slotId} success=${response.success}`)
 
       if (response.success && response.slot) {
+        console.log(`[BookingStore] 预定成功: ${slotId}`)
         // 3. 预定成功，更新状态
         runInAction(() => {
           this.slots.set(slotId, response.slot!)
@@ -132,17 +159,30 @@ export class BookingStore {
           this.clientState.pendingBookings.delete(slotId)
         })
 
+        // 【重要】预定成功后清理全局锁并广播
+        this.globalEventBus.releaseLock(slotId, this.currentUser.id)
+        this.globalEventBus.emit('booking_confirmed', {
+          slotId,
+          userId: this.currentUser.id,
+          slot: response.slot
+        })
+
+        console.log(`[BookingStore] 预定流程完成: ${slotId}`)
         return { success: true }
       } else {
-        // 4. 预定失败，回滚状态
+        console.log(`[BookingStore] 预定失败: ${slotId} - ${response.error?.message}`)
+        // 4. 预定失败，回滚状态并释放锁
         this.handleBookingFailure(slotId, response)
+        this.globalEventBus.releaseLock(slotId, this.currentUser.id)
+
         return {
           success: false,
           error: response.error?.message || '预定失败'
         }
       }
     } catch (err) {
-      // 5. 网络错误，回滚状态
+      console.log(`[BookingStore] 预定异常: ${slotId} - ${err}`)
+      // 5. 网络错误，回滚状态并释放锁
       this.handleBookingFailure(slotId, {
         success: false,
         error: {
@@ -150,6 +190,8 @@ export class BookingStore {
           message: err instanceof Error ? err.message : '网络错误'
         }
       })
+
+      this.globalEventBus.releaseLock(slotId, this.currentUser.id)
 
       return {
         success: false,
@@ -263,6 +305,70 @@ export class BookingStore {
   }
 
   /**
+   * 设置全局事件监听（用于跨页签同步）
+   */
+  private setupGlobalEventListeners() {
+    // 监听锁获取事件
+    this.globalEventBus.on('lock_acquired', (data: { slotId: string; userId: string }) => {
+      console.log(`[BookingStore] 收到锁获取事件: ${data.slotId} by ${data.userId}`)
+      if (data.userId !== this.currentUser?.id) {
+        runInAction(() => {
+          const slot = this.slots.get(data.slotId)
+          if (slot && slot.status === SlotStatus.AVAILABLE) {
+            // 其他页签获取了锁，更新UI
+            const lockedSlot: TimeSlot = {
+              ...slot,
+              status: SlotStatus.LOCKED,
+              lockedBy: data.userId,
+              lockedAt: new Date().toISOString()
+            }
+            this.slots.set(data.slotId, lockedSlot)
+            console.log(`[BookingStore] 更新时间段状态为锁定: ${data.slotId}`)
+          }
+        })
+      }
+    })
+
+    // 监听锁释放事件
+    this.globalEventBus.on('lock_released', (data: { slotId: string }) => {
+      console.log(`[BookingStore] 收到锁释放事件: ${data.slotId}`)
+      runInAction(() => {
+        const slot = this.slots.get(data.slotId)
+        if (slot && slot.status === SlotStatus.LOCKED) {
+          // 锁被释放，恢复可用状态
+          const availableSlot: TimeSlot = {
+            ...slot,
+            status: SlotStatus.AVAILABLE,
+            lockedBy: undefined,
+            lockedAt: undefined
+          }
+          this.slots.set(data.slotId, availableSlot)
+          console.log(`[BookingStore] 恢复时间段为可用: ${data.slotId}`)
+        }
+      })
+    })
+
+    // 【新增】监听预定成功事件
+    this.globalEventBus.on('booking_confirmed', (data: { slotId: string; userId: string; slot: TimeSlot }) => {
+      console.log(`[BookingStore] 收到预定成功事件: ${data.slotId} by ${data.userId}`)
+      if (data.userId !== this.currentUser?.id) {
+        runInAction(() => {
+          // 更新为已预定状态
+          this.slots.set(data.slotId, data.slot)
+          // 清除可能存在的乐观更新
+          this.clientState.optimisticUpdates.delete(data.slotId)
+          console.log(`[BookingStore] 更新时间段为已预定: ${data.slotId}`)
+        })
+      }
+    })
+
+    // 定期清理过期锁
+    setInterval(() => {
+      this.globalEventBus.cleanupLocks()
+    }, 10000) // 每10秒清理一次
+  }
+
+  /**
    * 获取排序后的时间段列表
    */
   getSortedSlots(): TimeSlot[] {
@@ -317,8 +423,9 @@ export class BookingStore {
     this.clientState.pendingBookings.forEach((_, slotId) => {
       this.clearOptimisticUpdate(slotId)
 
-      // 尝试解锁时间段
+      // 【修改】释放全局锁
       if (this.currentUser) {
+        this.globalEventBus.releaseLock(slotId, this.currentUser.id)
         this.api.unlockSlot(slotId, this.currentUser.id)
       }
     })

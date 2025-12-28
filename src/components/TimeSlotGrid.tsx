@@ -1,6 +1,5 @@
 import React from 'react'
 import {
-  Grid,
   Box,
   Typography,
   Alert,
@@ -105,19 +104,29 @@ export const TimeSlotGrid = observer(({ bookingStore }: TimeSlotGridProps) => {
             <Divider sx={{ flex: 1 }} />
           </Typography>
 
-          <Grid container spacing={2}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: '1fr',
+                sm: 'repeat(2, 1fr)',
+                md: 'repeat(3, 1fr)',
+                lg: 'repeat(4, 1fr)'
+              },
+              gap: 2
+            }}
+          >
             {dateSlots.map((slot) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={slot.id}>
-                <TimeSlotCard
-                  slot={slot}
-                  isLockedByCurrentUser={bookingStore.isSlotLockedByCurrentUser(slot.id)}
-                  isPending={bookingStore.hasPendingBookings() && bookingStore.getPendingBookings().some(p => p.id === slot.id)}
-                  onBook={handleBookSlot}
-                  disabled={bookingStore.hasPendingBookings()}
-                />
-              </Grid>
+              <TimeSlotCard
+                slot={slot}
+                isLockedByCurrentUser={bookingStore.isSlotLockedByCurrentUser(slot.id)}
+                isPending={bookingStore.hasPendingBookings() && bookingStore.getPendingBookings().some(p => p.id === slot.id)}
+                onBook={handleBookSlot}
+                disabled={bookingStore.hasPendingBookings()}
+                key={slot.id}
+              />
             ))}
-          </Grid>
+          </Box>
         </Box>
       ))}
 

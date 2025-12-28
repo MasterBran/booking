@@ -25,6 +25,7 @@ export default defineConfig([
     rules: {
       // TypeScript相关规则 - 将any类型警告设置为warn级别
       '@typescript-eslint/no-explicit-any': 'warn',           // 禁止使用any类型
+      '@typescript-eslint/no-used-vars': 'warn',
       '@typescript-eslint/no-unsafe-assignment': 'warn',       // 禁止any类型赋值
       '@typescript-eslint/no-unsafe-call': 'warn',             // 禁止any类型调用
       '@typescript-eslint/no-unsafe-member-access': 'warn',    // 禁止any类型成员访问
